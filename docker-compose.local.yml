@@ -1,0 +1,16 @@
+services:
+  openclaw-gateway:
+    environment:
+      NANOCLAW_RESPONDER_STATE_PATH: ${NANOCLAW_RESPONDER_STATE_PATH:-/host-nanoclaw-config/responder-state.json}
+    volumes:
+      - ${NANOCLAW_CONFIG_DIR:-/home/ubuntu/.config/nanoclaw}:/host-nanoclaw-config:ro
+      - ${OPENCLAW_JOB_DIR:-/home/ubuntu/project/job}:/project/job
+      - ${AGENTS_HARNESS_DIR:-/home/ubuntu/Agents-Harness}:/Agents-Harness:ro
+
+  openclaw-cli:
+    environment:
+      NANOCLAW_RESPONDER_STATE_PATH: ${NANOCLAW_RESPONDER_STATE_PATH:-/host-nanoclaw-config/responder-state.json}
+    volumes:
+      - ${NANOCLAW_CONFIG_DIR:-/home/ubuntu/.config/nanoclaw}:/host-nanoclaw-config:ro
+      - ${OPENCLAW_JOB_DIR:-/home/ubuntu/project/job}:/project/job
+      - ${AGENTS_HARNESS_DIR:-/home/ubuntu/Agents-Harness}:/Agents-Harness:ro
