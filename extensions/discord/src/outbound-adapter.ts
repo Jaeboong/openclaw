@@ -13,7 +13,7 @@ import {
 } from "openclaw/plugin-sdk/text-runtime";
 import { chunkDiscordTextWithMode } from "./chunk.js";
 import { withDiscordDeliveryRetry } from "./delivery-retry.js";
-import { buildDiscordResponseEmbedMessages } from "./local-overrides/response-sections.js";
+import { sendDiscordResponseSectionMessages } from "./local-overrides/send-response-sections.js";
 import { isLikelyDiscordVideoMedia } from "./media-detection.js";
 import type { ThreadBindingRecord } from "./monitor/thread-bindings.js";
 import { normalizeDiscordOutboundTarget } from "./normalize.js";
@@ -147,34 +147,35 @@ export const discordOutbound: ChannelOutboundAdapter = {
       fallbackAdapter: discordOutbound,
     }),
   sendFormattedText: async (ctx) => {
-    const messages = buildDiscordResponseEmbedMessages(ctx.text);
-    if (messages.length === 0) {
-      const result = await discordOutbound.sendText?.(ctx);
-      return result ? [result] : [];
-    }
-
     const send =
       resolveOutboundSendDep<DiscordSendFn>(ctx.deps, "discord") ??
       (await loadDiscordSendRuntime()).sendMessageDiscord;
     const target = resolveDiscordOutboundTarget({ to: ctx.to, threadId: ctx.threadId });
     const formattingOptions = resolveDiscordFormattingOptions({ formatting: ctx.formatting });
     const results: OutboundDeliveryResult[] = [];
-    for (const message of messages) {
-      const result = await withDiscordDeliveryRetry({
-        cfg: ctx.cfg,
-        accountId: ctx.accountId,
-        fn: async () =>
-          await send(target, "", {
-            verbose: false,
-            embeds: message.embeds,
-            replyTo: ctx.replyToId ?? undefined,
-            accountId: ctx.accountId ?? undefined,
-            silent: ctx.silent ?? undefined,
-            cfg: ctx.cfg,
-            ...formattingOptions,
-          }),
-      });
-      results.push(attachChannelToResult("discord", result));
+    const sentSections = await sendDiscordResponseSectionMessages({
+      text: ctx.text,
+      sendEmbed: async (message) => {
+        const result = await withDiscordDeliveryRetry({
+          cfg: ctx.cfg,
+          accountId: ctx.accountId,
+          fn: async () =>
+            await send(target, "", {
+              verbose: false,
+              embeds: message.embeds,
+              replyTo: ctx.replyToId ?? undefined,
+              accountId: ctx.accountId ?? undefined,
+              silent: ctx.silent ?? undefined,
+              cfg: ctx.cfg,
+              ...formattingOptions,
+            }),
+        });
+        results.push(attachChannelToResult("discord", result));
+      },
+    });
+    if (!sentSections) {
+      const result = await discordOutbound.sendText?.(ctx);
+      return result ? [result] : [];
     }
     return results;
   },

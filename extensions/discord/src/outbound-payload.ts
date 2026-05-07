@@ -8,7 +8,7 @@ import {
   sendTextMediaPayload,
 } from "openclaw/plugin-sdk/reply-payload";
 import { normalizeOptionalString } from "openclaw/plugin-sdk/text-runtime";
-import { buildDiscordResponseEmbedMessages } from "./local-overrides/response-sections.js";
+import { sendDiscordResponseSectionMessages } from "./local-overrides/send-response-sections.js";
 import { normalizeDiscordApprovalPayload } from "./outbound-approval.js";
 import {
   resolveDiscordComponentSpec,
@@ -143,18 +143,18 @@ export async function sendDiscordOutboundPayload(params: {
       return attachChannelToResult("discord", result);
     }
     if (mediaUrls.length === 0 && !hasApprovalData && payload.text?.trim()) {
-      const messages = buildDiscordResponseEmbedMessages(payload.text);
-      if (messages.length > 0) {
-        let lastResult = {
-          messageId: "",
+      let lastResult = {
+        messageId: "",
+        channelId: sendContext.target,
+        receipt: createDiscordSendReceipt({
+          platformMessageIds: [],
           channelId: sendContext.target,
-          receipt: createDiscordSendReceipt({
-            platformMessageIds: [],
-            channelId: sendContext.target,
-            kind: "unknown",
-          }),
-        };
-        for (const message of messages) {
+          kind: "unknown",
+        }),
+      };
+      const sentSections = await sendDiscordResponseSectionMessages({
+        text: payload.text,
+        sendEmbed: async (message) => {
           lastResult = await sendContext.withRetry(
             async () =>
               await sendContext.send(sendContext.target, "", {
@@ -167,7 +167,9 @@ export async function sendDiscordOutboundPayload(params: {
                 ...sendContext.formatting,
               }),
           );
-        }
+        },
+      });
+      if (sentSections) {
         return attachChannelToResult("discord", lastResult);
       }
     }
