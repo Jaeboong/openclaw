@@ -567,6 +567,17 @@ Expected: one docs commit.
 
 ---
 
+## 2차 Result
+
+- Local module target: `extensions/discord/src/local-overrides`.
+- Ledger pure logic location: `extensions/discord/src/local-overrides/response-sections.ts` plus `send-response-sections.ts`.
+- Responder pure logic location: `extensions/discord/src/local-overrides/responder-state.ts`.
+- Remaining Discord call-site patch files: `extensions/discord/src/outbound-adapter.ts`, `extensions/discord/src/outbound-payload.ts`, `extensions/discord/src/send.shared.ts`, `extensions/discord/src/monitor/message-handler.ts`, `extensions/discord/src/monitor/message-handler.preflight.ts`, and `extensions/discord/src/monitor/message-handler.preflight.types.ts`.
+- Full plugin replacement status: technically possible with a same-id config-origin `discord` plugin, but deferred because it requires carrying a full Discord plugin fork.
+- Next trigger to revisit sidecar: re-evaluate if upstream rebase conflicts repeatedly land in the same Discord call sites or if OpenClaw does not expose upstream hooks for outbound section rendering and shared responder gating.
+
+---
+
 ## Stop Conditions
 
 Stop and ask the user before proceeding if any of these occur:

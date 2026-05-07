@@ -65,6 +65,15 @@ When pulling or rebasing upstream OpenClaw, keep `docker-compose.yml` clean from
 local host wiring. Put host-specific mounts and environment values in
 `docker-compose.local.yml` and run compose with both files.
 
-If local Discord behavior needs to be restored after an upstream update,
-re-apply only the two local Discord patch queue commits as needed. Do not carry
-unrelated source or compose edits forward.
+## Local Discord Patch Queue
+
+Local Discord behavior is split into:
+
+- ledger section rendering
+- shared responder gating
+
+When rebasing upstream, reapply these commits after
+`chore: isolate local openclaw overrides`. Keep pure local logic in
+`extensions/discord/src/local-overrides`; carry only the narrow Discord call-site
+patches needed to invoke those helpers. Do not carry unrelated source or compose
+edits forward.
