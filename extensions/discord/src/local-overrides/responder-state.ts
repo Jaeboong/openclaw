@@ -11,27 +11,42 @@ export type SharedResponderDecision = {
 };
 
 type Env = Record<string, string | undefined>;
+type SharedResponderGateReason =
+  | SharedResponderDecision["reason"]
+  | "other-bot-mention"
+  | "mentioned"
+  | "not-guild";
+
+export type SharedResponderGateDecision = {
+  responder: SharedResponder;
+  skip: boolean;
+  reason: SharedResponderGateReason;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object";
+}
 
 function isResponder(value: unknown): value is Exclude<SharedResponder, "unconfigured"> {
   return value === "claude" || value === "codex" || value === "both";
 }
 
 function readChannelResponder(state: unknown, channelJid: string): SharedResponderDecision {
-  if (!state || typeof state !== "object") {
+  if (!isRecord(state)) {
     return { responder: "claude", shouldHandle: false, reason: "invalid-state" };
   }
 
-  const channels = (state as { channels?: unknown }).channels;
-  if (!channels || typeof channels !== "object") {
+  const channels = state.channels;
+  if (!isRecord(channels)) {
     return { responder: "claude", shouldHandle: false, reason: "invalid-state" };
   }
 
-  const channelState = (channels as Record<string, unknown>)[channelJid];
-  if (!channelState || typeof channelState !== "object") {
+  const channelState = channels[channelJid];
+  if (!isRecord(channelState)) {
     return { responder: "claude", shouldHandle: false, reason: "missing-channel" };
   }
 
-  const responder = (channelState as { responder?: unknown }).responder;
+  const responder = channelState.responder;
   if (!isResponder(responder)) {
     return { responder: "claude", shouldHandle: false, reason: "invalid-state" };
   }
@@ -58,4 +73,30 @@ export function resolveSharedResponderDecision(
   } catch {
     return { responder: "claude", shouldHandle: false, reason: "invalid-state" };
   }
+}
+
+export function shouldSkipForSharedResponder(params: {
+  readonly isGuildMessage: boolean;
+  readonly wasMentioned: boolean;
+  readonly mentionedOtherBot: boolean;
+  readonly messageChannelId: string;
+}): SharedResponderGateDecision {
+  if (!params.isGuildMessage) {
+    return { skip: false, responder: "unconfigured", reason: "not-guild" };
+  }
+
+  if (params.wasMentioned) {
+    return { skip: false, responder: "unconfigured", reason: "mentioned" };
+  }
+
+  if (params.mentionedOtherBot) {
+    return { skip: true, responder: "unconfigured", reason: "other-bot-mention" };
+  }
+
+  const decision = resolveSharedResponderDecision(params.messageChannelId);
+  return {
+    skip: !decision.shouldHandle,
+    responder: decision.responder,
+    reason: decision.reason,
+  };
 }
