@@ -6,6 +6,7 @@ import { danger, logVerbose } from "openclaw/plugin-sdk/runtime-env";
 import { resolveOpenProviderRuntimeGroupPolicy } from "openclaw/plugin-sdk/runtime-group-policy";
 import { createDiscordRestClient } from "../client.js";
 import type { Client } from "../internal/discord.js";
+import { shouldSkipForSharedResponder } from "../local-overrides/responder-state.js";
 import {
   buildDiscordInboundReplayKey,
   claimDiscordInboundReplay,
@@ -28,7 +29,6 @@ import {
   resolveDiscordMessageChannelId,
   resolveDiscordMessageText,
 } from "./message-utils.js";
-import { resolveSharedResponderDecision } from "./responder-state.js";
 import type { DiscordMonitorStatusSink } from "./status.js";
 import { sendTyping } from "./typing.js";
 
@@ -100,30 +100,22 @@ async function shouldDispatchAcceptedDiscordContext(params: {
   replayKeys: string[];
   replayGuard: ReturnType<typeof createDiscordInboundReplayGuard>;
 }): Promise<boolean> {
-  if (params.ctx.isGuildMessage && params.ctx.mentionedOtherBot && !params.ctx.wasMentioned) {
-    logVerbose(
-      `discord shared responder gate skipped channel dc:${params.ctx.messageChannelId} ` +
-        "(reason=other-bot-mention)",
-    );
-    await commitDiscordInboundReplay({
-      replayKeys: params.replayKeys,
-      replayGuard: params.replayGuard,
-    });
-    return false;
-  }
-
-  if (!params.ctx.isGuildMessage || params.ctx.wasMentioned) {
+  const decision = shouldSkipForSharedResponder({
+    isGuildMessage: params.ctx.isGuildMessage,
+    wasMentioned: params.ctx.wasMentioned,
+    mentionedOtherBot: params.ctx.mentionedOtherBot,
+    messageChannelId: params.ctx.messageChannelId,
+  });
+  if (!decision.skip) {
     return true;
   }
 
-  const decision = resolveSharedResponderDecision(params.ctx.messageChannelId);
-  if (decision.shouldHandle) {
-    return true;
-  }
-
+  const details =
+    decision.reason === "other-bot-mention"
+      ? "(reason=other-bot-mention)"
+      : `(responder=${decision.responder}, reason=${decision.reason})`;
   logVerbose(
-    `discord shared responder gate skipped channel dc:${params.ctx.messageChannelId} ` +
-      `(responder=${decision.responder}, reason=${decision.reason})`,
+    `discord shared responder gate skipped channel dc:${params.ctx.messageChannelId} ${details}`,
   );
   await commitDiscordInboundReplay({
     replayKeys: params.replayKeys,
