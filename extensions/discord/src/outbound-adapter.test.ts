@@ -713,7 +713,7 @@ describe("discordOutbound", () => {
     ).toEqual(["reply-1", undefined]);
   });
 
-  it("leaves non-approval mentions unchanged", async () => {
+  it("preserves non-approval mentions inside neutral response embeds", async () => {
     await discordOutbound.sendPayload?.({
       cfg: {},
       to: "channel:123456",
@@ -726,10 +726,128 @@ describe("discordOutbound", () => {
 
     expect(hoisted.sendMessageDiscordMock).toHaveBeenCalledWith(
       "channel:123456",
-      "Hello @everyone",
+      "",
       expect.objectContaining({
         accountId: "default",
+        embeds: [
+          expect.objectContaining({
+            color: 0xffffff,
+            description: "Hello @everyone",
+          }),
+        ],
       }),
     );
+  });
+
+  it("renders normal assistant section text payloads as Discord embeds", async () => {
+    await discordOutbound.sendPayload?.({
+      cfg: {},
+      to: "channel:123456",
+      text: "",
+      payload: {
+        text: ["## 분석", "원인은 여기에 있어.", "", "## 결론", "이렇게 고치자."].join("\n"),
+      },
+      accountId: "default",
+    });
+
+    expect(hoisted.sendMessageDiscordMock).toHaveBeenNthCalledWith(
+      1,
+      "channel:123456",
+      "",
+      expect.objectContaining({
+        accountId: "default",
+        embeds: [
+          expect.objectContaining({
+            title: "🔍 분석",
+            color: 0x57f287,
+            description: "원인은 여기에 있어.",
+          }),
+        ],
+      }),
+    );
+    expect(hoisted.sendMessageDiscordMock).toHaveBeenNthCalledWith(
+      2,
+      "channel:123456",
+      "",
+      expect.objectContaining({
+        accountId: "default",
+        embeds: [
+          expect.objectContaining({
+            title: "📌 결론",
+            color: 0x3498db,
+            description: "이렇게 고치자.",
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("renders normal assistant section final text as Discord embeds", async () => {
+    const result = await discordOutbound.sendFormattedText?.({
+      cfg: {},
+      to: "channel:parent-1",
+      text: ["## 분석", "원인은 여기에 있어.", "", "## 결론", "이렇게 고치자."].join("\n"),
+      accountId: "default",
+      threadId: "thread-1",
+      replyToId: "reply-1",
+      silent: true,
+      formatting: {
+        textLimit: 1234,
+        maxLinesPerMessage: 7,
+        tableMode: "off",
+        chunkMode: "newline",
+      },
+    });
+
+    expect(hoisted.sendMessageDiscordMock).toHaveBeenNthCalledWith(
+      1,
+      "channel:thread-1",
+      "",
+      expect.objectContaining({
+        accountId: "default",
+        replyTo: "reply-1",
+        silent: true,
+        textLimit: 1234,
+        maxLinesPerMessage: 7,
+        tableMode: "off",
+        chunkMode: "newline",
+        embeds: [
+          expect.objectContaining({
+            title: "🔍 분석",
+            color: 0x57f287,
+            description: "원인은 여기에 있어.",
+          }),
+        ],
+      }),
+    );
+    expect(hoisted.sendMessageDiscordMock).toHaveBeenNthCalledWith(
+      2,
+      "channel:thread-1",
+      "",
+      expect.objectContaining({
+        accountId: "default",
+        replyTo: "reply-1",
+        silent: true,
+        embeds: [
+          expect.objectContaining({
+            title: "📌 결론",
+            color: 0x3498db,
+            description: "이렇게 고치자.",
+          }),
+        ],
+      }),
+    );
+    expect(result).toEqual([
+      {
+        channel: "discord",
+        messageId: "msg-1",
+        channelId: "ch-1",
+      },
+      {
+        channel: "discord",
+        messageId: "msg-1",
+        channelId: "ch-1",
+      },
+    ]);
   });
 });

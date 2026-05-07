@@ -1,6 +1,8 @@
 import {
+  attachChannelToResult,
   type ChannelOutboundAdapter,
   createAttachedChannelResultAdapter,
+  type OutboundDeliveryResult,
 } from "openclaw/plugin-sdk/channel-send-result";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-types";
 import type { OutboundIdentity } from "openclaw/plugin-sdk/outbound-runtime";
@@ -11,6 +13,7 @@ import {
 } from "openclaw/plugin-sdk/text-runtime";
 import { chunkDiscordTextWithMode } from "./chunk.js";
 import { withDiscordDeliveryRetry } from "./delivery-retry.js";
+import { buildDiscordResponseEmbedMessages } from "./discord-response-sections.js";
 import { isLikelyDiscordVideoMedia } from "./media-detection.js";
 import type { ThreadBindingRecord } from "./monitor/thread-bindings.js";
 import { normalizeDiscordOutboundTarget } from "./normalize.js";
@@ -143,6 +146,38 @@ export const discordOutbound: ChannelOutboundAdapter = {
       ctx,
       fallbackAdapter: discordOutbound,
     }),
+  sendFormattedText: async (ctx) => {
+    const messages = buildDiscordResponseEmbedMessages(ctx.text);
+    if (messages.length === 0) {
+      const result = await discordOutbound.sendText?.(ctx);
+      return result ? [result] : [];
+    }
+
+    const send =
+      resolveOutboundSendDep<DiscordSendFn>(ctx.deps, "discord") ??
+      (await loadDiscordSendRuntime()).sendMessageDiscord;
+    const target = resolveDiscordOutboundTarget({ to: ctx.to, threadId: ctx.threadId });
+    const formattingOptions = resolveDiscordFormattingOptions({ formatting: ctx.formatting });
+    const results: OutboundDeliveryResult[] = [];
+    for (const message of messages) {
+      const result = await withDiscordDeliveryRetry({
+        cfg: ctx.cfg,
+        accountId: ctx.accountId,
+        fn: async () =>
+          await send(target, "", {
+            verbose: false,
+            embeds: message.embeds,
+            replyTo: ctx.replyToId ?? undefined,
+            accountId: ctx.accountId ?? undefined,
+            silent: ctx.silent ?? undefined,
+            cfg: ctx.cfg,
+            ...formattingOptions,
+          }),
+      });
+      results.push(attachChannelToResult("discord", result));
+    }
+    return results;
+  },
   ...createAttachedChannelResultAdapter({
     channel: "discord",
     sendText: async ({

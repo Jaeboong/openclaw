@@ -303,11 +303,14 @@ async function sendDiscordText(
   silent?: boolean,
   maxChars?: number,
 ) {
-  if (!text.trim()) {
+  const hasStructuredPayload = Boolean(components?.length || embeds?.length);
+  if (!text.trim() && !hasStructuredPayload) {
     throw new Error("Message must be non-empty for Discord sends");
   }
   const flags = silent ? SUPPRESS_NOTIFICATIONS_FLAG : undefined;
-  const chunks = buildDiscordTextChunks(text, { maxLinesPerMessage, chunkMode, maxChars });
+  const chunks = text.trim()
+    ? buildDiscordTextChunks(text, { maxLinesPerMessage, chunkMode, maxChars })
+    : [""];
   const sendChunk = async (chunk: string, isFirst: boolean) => {
     const chunkComponents = resolveDiscordSendComponents({
       components,

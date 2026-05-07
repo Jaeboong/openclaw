@@ -151,6 +151,31 @@ describe("sendMessageDiscord", () => {
     );
   });
 
+  it("sends embed-only channel messages without content", async () => {
+    const { rest, postMock, getMock } = makeDiscordRest();
+    getMock.mockResolvedValueOnce({ type: ChannelType.GuildText });
+    postMock.mockResolvedValue({
+      id: "msg1",
+      channel_id: "789",
+    });
+
+    await sendMessageDiscord("channel:789", "", {
+      rest,
+      token: "t",
+      cfg: DISCORD_TEST_CFG,
+      embeds: [{ color: 0xffffff, description: "neutral body" }],
+    });
+
+    expect(postMock).toHaveBeenCalledWith(
+      Routes.channelMessages("789"),
+      expect.objectContaining({
+        body: {
+          embeds: [{ color: 0xffffff, description: "neutral body" }],
+        },
+      }),
+    );
+  });
+
   it("rewrites cached @username mentions to id-based mentions", async () => {
     rememberDiscordDirectoryUser({
       accountId: "default",

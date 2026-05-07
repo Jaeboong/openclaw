@@ -8,6 +8,7 @@ import {
   sendTextMediaPayload,
 } from "openclaw/plugin-sdk/reply-payload";
 import { normalizeOptionalString } from "openclaw/plugin-sdk/text-runtime";
+import { buildDiscordResponseEmbedMessages } from "./discord-response-sections.js";
 import { normalizeDiscordApprovalPayload } from "./outbound-approval.js";
 import {
   resolveDiscordComponentSpec,
@@ -87,6 +88,10 @@ export async function sendDiscordOutboundPayload(params: {
       ? (discordData.embeds as DiscordSendEmbeds)
       : undefined;
     const filename = normalizeOptionalString(discordData.filename);
+    const hasApprovalData =
+      payload.channelData?.execApproval &&
+      typeof payload.channelData.execApproval === "object" &&
+      !Array.isArray(payload.channelData.execApproval);
     if (nativeComponents || embeds?.length || filename) {
       const result = await sendPayloadMediaSequenceOrFallback({
         text: payload.text ?? "",
@@ -136,6 +141,35 @@ export async function sendDiscordOutboundPayload(params: {
           ),
       });
       return attachChannelToResult("discord", result);
+    }
+    if (mediaUrls.length === 0 && !hasApprovalData && payload.text?.trim()) {
+      const messages = buildDiscordResponseEmbedMessages(payload.text);
+      if (messages.length > 0) {
+        let lastResult = {
+          messageId: "",
+          channelId: sendContext.target,
+          receipt: createDiscordSendReceipt({
+            platformMessageIds: [],
+            channelId: sendContext.target,
+            kind: "unknown",
+          }),
+        };
+        for (const message of messages) {
+          lastResult = await sendContext.withRetry(
+            async () =>
+              await sendContext.send(sendContext.target, "", {
+                verbose: false,
+                embeds: message.embeds,
+                replyTo: sendContext.resolveReplyTo(),
+                accountId: ctx.accountId ?? undefined,
+                silent: ctx.silent ?? undefined,
+                cfg: ctx.cfg,
+                ...sendContext.formatting,
+              }),
+          );
+        }
+        return attachChannelToResult("discord", lastResult);
+      }
     }
     return await sendTextMediaPayload({
       channel: "discord",
