@@ -1,5 +1,8 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-types";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DiscordRetryableInboundError } from "./inbound-dedupe.js";
 import {
   createDiscordMessageHandler,
@@ -43,6 +46,24 @@ async function flushQueueWork(): Promise<void> {
   }
 }
 
+const originalResponderStatePath = process.env.NANOCLAW_RESPONDER_STATE_PATH;
+let responderStateTempDir: string | undefined;
+
+function writeSharedResponderState(responder: "claude" | "codex" | "both", channelId = "ch-1") {
+  responderStateTempDir = mkdtempSync(join(tmpdir(), "openclaw-responder-state-"));
+  const path = join(responderStateTempDir, "responder-state.json");
+  writeFileSync(
+    path,
+    JSON.stringify({
+      channels: {
+        [`dc:${channelId}`]: { responder },
+      },
+    }),
+    "utf8",
+  );
+  process.env.NANOCLAW_RESPONDER_STATE_PATH = path;
+}
+
 function createMessageData(messageId: string, channelId = "ch-1") {
   return {
     channel_id: channelId,
@@ -75,6 +96,10 @@ function createPreflightContext(channelId = "ch-1") {
   };
   return {
     ...createDiscordPreflightContext(channelId),
+    isGuildMessage: true,
+    isDirectMessage: false,
+    isGroupDm: false,
+    wasMentioned: false,
     cfg,
     accountId: "default",
     token: "test-token",
@@ -154,6 +179,18 @@ describe("createDiscordMessageHandler queue behavior", () => {
     earlyTypingMocks.sendTyping.mockReset().mockResolvedValue(undefined);
   });
 
+  afterEach(() => {
+    if (originalResponderStatePath === undefined) {
+      delete process.env.NANOCLAW_RESPONDER_STATE_PATH;
+    } else {
+      process.env.NANOCLAW_RESPONDER_STATE_PATH = originalResponderStatePath;
+    }
+    if (responderStateTempDir) {
+      rmSync(responderStateTempDir, { force: true, recursive: true });
+      responderStateTempDir = undefined;
+    }
+  });
+
   it("sends an accepted DM typing cue before queued processing starts", async () => {
     preflightDiscordMessageMock.mockReset();
     processDiscordMessageMock.mockReset();
@@ -213,6 +250,93 @@ describe("createDiscordMessageHandler queue behavior", () => {
     await flushQueueWork();
 
     expect(earlyTypingMocks.sendTyping).not.toHaveBeenCalled();
+    expect(processDiscordMessageMock).not.toHaveBeenCalled();
+  });
+
+  it("does not enqueue Discord messages when shared responder state selects Claude", async () => {
+    preflightDiscordMessageMock.mockReset();
+    processDiscordMessageMock.mockReset();
+    writeSharedResponderState("claude", "ch-1");
+    preflightDiscordMessageMock.mockImplementation(
+      async (params: { data: { channel_id: string } }) =>
+        createPreflightContext(params.data.channel_id),
+    );
+
+    const handler = createDiscordMessageHandler(createDiscordHandlerParams());
+    await expect(
+      handler(createMessageData("m-claude-selected", "ch-1") as never, {} as never),
+    ).resolves.toBeUndefined();
+
+    await flushQueueWork();
+
+    expect(preflightDiscordMessageMock).toHaveBeenCalledTimes(1);
+    expect(processDiscordMessageMock).not.toHaveBeenCalled();
+  });
+
+  it("enqueues mentioned Discord messages when shared responder state selects Claude", async () => {
+    preflightDiscordMessageMock.mockReset();
+    processDiscordMessageMock.mockReset();
+    writeSharedResponderState("claude", "ch-1");
+    preflightDiscordMessageMock.mockImplementation(
+      async (params: { data: { channel_id: string } }) => ({
+        ...createPreflightContext(params.data.channel_id),
+        isGuildMessage: true,
+        wasMentioned: true,
+      }),
+    );
+    processDiscordMessageMock.mockResolvedValue(undefined);
+
+    const handler = createDiscordMessageHandler(createDiscordHandlerParams());
+    await expect(
+      handler(createMessageData("m-claude-mentioned", "ch-1") as never, {} as never),
+    ).resolves.toBeUndefined();
+
+    await flushQueueWork();
+
+    expect(processDiscordMessageMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("enqueues Discord messages when shared responder state selects Codex", async () => {
+    preflightDiscordMessageMock.mockReset();
+    processDiscordMessageMock.mockReset();
+    writeSharedResponderState("codex", "ch-1");
+    preflightDiscordMessageMock.mockImplementation(
+      async (params: { data: { channel_id: string } }) =>
+        createPreflightContext(params.data.channel_id),
+    );
+    processDiscordMessageMock.mockResolvedValue(undefined);
+
+    const handler = createDiscordMessageHandler(createDiscordHandlerParams());
+    await expect(
+      handler(createMessageData("m-codex-selected", "ch-1") as never, {} as never),
+    ).resolves.toBeUndefined();
+
+    await flushQueueWork();
+
+    expect(processDiscordMessageMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not enqueue Discord messages for another bot mention even when shared responder state selects Codex", async () => {
+    preflightDiscordMessageMock.mockReset();
+    processDiscordMessageMock.mockReset();
+    writeSharedResponderState("codex", "ch-1");
+    preflightDiscordMessageMock.mockImplementation(
+      async (params: { data: { channel_id: string } }) => ({
+        ...createPreflightContext(params.data.channel_id),
+        isGuildMessage: true,
+        wasMentioned: false,
+        mentionedOtherBot: true,
+      }),
+    );
+    processDiscordMessageMock.mockResolvedValue(undefined);
+
+    const handler = createDiscordMessageHandler(createDiscordHandlerParams());
+    await expect(
+      handler(createMessageData("m-codex-other-bot-mentioned", "ch-1") as never, {} as never),
+    ).resolves.toBeUndefined();
+
+    await flushQueueWork();
+
     expect(processDiscordMessageMock).not.toHaveBeenCalled();
   });
 

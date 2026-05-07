@@ -28,6 +28,7 @@ import {
   resolveDiscordMessageChannelId,
   resolveDiscordMessageText,
 } from "./message-utils.js";
+import { resolveSharedResponderDecision } from "./responder-state.js";
 import type { DiscordMonitorStatusSink } from "./status.js";
 import { sendTyping } from "./typing.js";
 
@@ -92,6 +93,43 @@ function queueAcceptedDiscordTypingCue(ctx: DiscordMessagePreflightContext): voi
       `discord early typing cue failed for channel ${ctx.messageChannelId}: ${String(err)}`,
     );
   });
+}
+
+async function shouldDispatchAcceptedDiscordContext(params: {
+  ctx: DiscordMessagePreflightContext;
+  replayKeys: string[];
+  replayGuard: ReturnType<typeof createDiscordInboundReplayGuard>;
+}): Promise<boolean> {
+  if (params.ctx.isGuildMessage && params.ctx.mentionedOtherBot && !params.ctx.wasMentioned) {
+    logVerbose(
+      `discord shared responder gate skipped channel dc:${params.ctx.messageChannelId} ` +
+        "(reason=other-bot-mention)",
+    );
+    await commitDiscordInboundReplay({
+      replayKeys: params.replayKeys,
+      replayGuard: params.replayGuard,
+    });
+    return false;
+  }
+
+  if (!params.ctx.isGuildMessage || params.ctx.wasMentioned) {
+    return true;
+  }
+
+  const decision = resolveSharedResponderDecision(params.ctx.messageChannelId);
+  if (decision.shouldHandle) {
+    return true;
+  }
+
+  logVerbose(
+    `discord shared responder gate skipped channel dc:${params.ctx.messageChannelId} ` +
+      `(responder=${decision.responder}, reason=${decision.reason})`,
+  );
+  await commitDiscordInboundReplay({
+    replayKeys: params.replayKeys,
+    replayGuard: params.replayGuard,
+  });
+  return false;
 }
 
 export function createDiscordMessageHandler(
@@ -185,6 +223,9 @@ export function createDiscordMessageHandler(
             await commitDiscordInboundReplay({ replayKeys, replayGuard });
             return;
           }
+          if (!(await shouldDispatchAcceptedDiscordContext({ ctx, replayKeys, replayGuard }))) {
+            return;
+          }
           applyImplicitReplyBatchGate(ctx, params.replyToMode, false);
           queueAcceptedDiscordTypingCue(ctx);
           messageRunQueue.enqueue(buildDiscordInboundJob(ctx, { replayKeys }));
@@ -233,6 +274,9 @@ export function createDiscordMessageHandler(
         });
         if (!ctx) {
           await commitDiscordInboundReplay({ replayKeys, replayGuard });
+          return;
+        }
+        if (!(await shouldDispatchAcceptedDiscordContext({ ctx, replayKeys, replayGuard }))) {
           return;
         }
         applyImplicitReplyBatchGate(ctx, params.replyToMode, true);

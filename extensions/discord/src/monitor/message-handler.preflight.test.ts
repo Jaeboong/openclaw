@@ -1309,6 +1309,42 @@ describe("preflightDiscordMessage", () => {
     expect(result).toBeNull();
   });
 
+  it("marks guild messages that mention another bot", async () => {
+    const channelId = "channel-other-bot-mention-1";
+    const guildId = "guild-other-bot-mention-1";
+    const message = createDiscordMessage({
+      id: "m-other-bot-mention-1",
+      channelId,
+      content: "hello <@other-bot>",
+      mentionedUsers: [{ id: "other-bot", bot: true }],
+      author: {
+        id: "user-1",
+        bot: false,
+        username: "Alice",
+      },
+    });
+
+    const result = await runGuildPreflight({
+      channelId,
+      guildId,
+      message,
+      discordConfig: {} as DiscordConfig,
+      guildEntries: {
+        [guildId]: {
+          channels: {
+            [channelId]: {
+              enabled: true,
+              requireMention: false,
+            },
+          },
+        },
+      },
+    });
+
+    expect(result?.wasMentioned).toBe(false);
+    expect(result?.mentionedOtherBot).toBe(true);
+  });
+
   it("does not drop @everyone messages when ignoreOtherMentions=true", async () => {
     const channelId = "channel-other-mention-everyone";
     const guildId = "guild-other-mention-everyone";

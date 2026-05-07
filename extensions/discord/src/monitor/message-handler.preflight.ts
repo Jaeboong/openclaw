@@ -308,6 +308,10 @@ export async function preflightDiscordMessage(
   const explicitlyMentioned = Boolean(
     botId && message.mentionedUsers?.some((user: User) => user.id === botId),
   );
+  const mentionedOtherBot = Boolean(
+    !isDirectMessage &&
+    message.mentionedUsers?.some((user: User) => user.bot && (!botId || user.id !== botId)),
+  );
   const hasAnyMention =
     !isDirectMessage &&
     ((message.mentionedUsers?.length ?? 0) > 0 ||
@@ -642,6 +646,7 @@ export async function preflightDiscordMessage(
     messageText,
     ...(preflightTranscript !== undefined ? { preflightAudioTranscript: preflightTranscript } : {}),
     wasMentioned,
+    mentionedOtherBot,
     route: effectiveRoute,
     threadBinding,
     boundSessionKey: boundSessionKey || undefined,

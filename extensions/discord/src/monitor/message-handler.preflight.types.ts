@@ -57,6 +57,7 @@ export type DiscordMessagePreflightContext = DiscordMessagePreflightSharedFields
   messageText: string;
   preflightAudioTranscript?: string;
   wasMentioned: boolean;
+  mentionedOtherBot: boolean;
 
   route: ReturnType<typeof resolveAgentRoute>;
   threadBinding?: SessionBindingRecord;

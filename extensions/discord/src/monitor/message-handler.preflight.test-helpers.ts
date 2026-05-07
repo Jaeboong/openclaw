@@ -61,7 +61,7 @@ export function createDiscordMessage(params: {
     bot: boolean;
     username?: string;
   };
-  mentionedUsers?: Array<{ id: string }>;
+  mentionedUsers?: Array<{ id: string; bot?: boolean }>;
   mentionedEveryone?: boolean;
   attachments?: Array<Record<string, unknown>>;
   webhookId?: string;
