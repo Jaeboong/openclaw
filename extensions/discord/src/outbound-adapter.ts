@@ -13,7 +13,7 @@ import {
 } from "openclaw/plugin-sdk/text-runtime";
 import { chunkDiscordTextWithMode } from "./chunk.js";
 import { withDiscordDeliveryRetry } from "./delivery-retry.js";
-import { buildDiscordResponseEmbedMessages } from "./discord-response-sections.js";
+import { buildDiscordResponseEmbedMessages } from "./local-overrides/response-sections.js";
 import { isLikelyDiscordVideoMedia } from "./media-detection.js";
 import type { ThreadBindingRecord } from "./monitor/thread-bindings.js";
 import { normalizeDiscordOutboundTarget } from "./normalize.js";

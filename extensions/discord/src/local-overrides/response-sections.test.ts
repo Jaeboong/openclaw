@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildDiscordResponseEmbedMessages,
   DISCORD_EMBED_DESCRIPTION_LIMIT,
-} from "./discord-response-sections.js";
+} from "./response-sections.js";
 
 describe("buildDiscordResponseEmbedMessages", () => {
   it("renders plain text as a neutral embed", () => {

@@ -8,7 +8,7 @@ import {
   sendTextMediaPayload,
 } from "openclaw/plugin-sdk/reply-payload";
 import { normalizeOptionalString } from "openclaw/plugin-sdk/text-runtime";
-import { buildDiscordResponseEmbedMessages } from "./discord-response-sections.js";
+import { buildDiscordResponseEmbedMessages } from "./local-overrides/response-sections.js";
 import { normalizeDiscordApprovalPayload } from "./outbound-approval.js";
 import {
   resolveDiscordComponentSpec,
